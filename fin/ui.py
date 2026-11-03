@@ -150,8 +150,9 @@ table.fin th {{ position:sticky; top:0; background:var(--card2); color:var(--tex
 table.fin th:first-child, table.fin td:first-child {{ text-align:left; position:sticky; left:0; background:var(--card); z-index:1; min-width:210px; }}
 table.fin th:first-child {{ background:var(--card2); z-index:3; }}
 table.fin td {{ padding:7px 12px; text-align:right; border-bottom:1px solid var(--border); color:var(--text); white-space:nowrap; }}
-table.fin tr.tot td {{ font-weight:600; background:{'rgba(34,197,139,.06)' if dark else 'rgba(15,157,106,.06)'}; }}
-table.fin tr:hover td {{ background:var(--card2); }}
+table.fin td {{ background-color:var(--card); }}
+table.fin tr.tot td {{ font-weight:600; background-color:var(--card); background-image:linear-gradient({'rgba(34,197,139,.06)' if dark else 'rgba(15,157,106,.06)'},{'rgba(34,197,139,.06)' if dark else 'rgba(15,157,106,.06)'}); }}
+table.fin tr:hover td {{ background-color:var(--card2); background-image:none; }}
 table.fin td.neg {{ color:var(--neg); }} table.fin td.proj, table.fin th.proj {{ color:var(--accent); }}
 @media (max-width: 900px) {{ .kpi-value {{ font-size:24px; }} .block-container {{ padding-left:1rem; padding-right:1rem; }} }}
 </style>

@@ -46,6 +46,7 @@ Each Excel/CSV upload becomes its own company, so you can compare several on the
 - Scanned PDFs (no text layer) are not read directly. Upload page screenshots instead.
 - The **case study is generated from rules and templates**, not an AI model. It states facts from your numbers and quotes sentences from the report. It does not "understand" the business beyond that.
 - **Not covered**: segment and geography tables, notes to accounts, shareholding pattern, related-party details, quarterly trends (the Screener quarterly sheet is read but not charted), industry and peer data not in your files.
+- **Net profit definition.** The Screener Excel "Net profit" is profit attributable to owners (after minority interest and associates, and it matches EPS). Screener's web page shows profit before minority (PBT - Tax). The app keeps the owners' figure as headline PAT and shows the bridge in the income statement. Projections carry a *Minority & others % of PAT* driver (default taken from history), and the DCF deducts the minority share of equity value.
 - **Projections are mechanical extrapolations** of history, and the DCF is very sensitive to WACC and terminal growth (the app warns when terminal value exceeds 75% of EV). Capex is estimated from the net-block movement. This is not investment advice.
 - In **light mode** the editable review table in Data Hub keeps Streamlit's dark styling; everything else follows the theme.
 - Demo data is **synthetic**, not a real company.

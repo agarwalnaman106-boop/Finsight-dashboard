@@ -54,6 +54,10 @@ def build_case_study(m: Metrics, name: str, report: dict | None = None, proj_sum
             f"Net profit {_chg_word(pat_g)} {pct(abs(pat_g)) if not is_nan(pat_g) else ''} to {money(L['PAT'])} "
             f"(net margin {pct(L['Net Margin %'])}, {_pp(nmdelta)})."
         )
+        mo, pt = L.get("Minority & others"), L.get("PAT (total)")
+        if not is_nan(mo) and not is_nan(pt) and pt > 0 and mo / pt > 0.05:
+            body.append(f"Profit after tax before minority interest was {money(pt)}; about {pct(mo / pt * 100)} of it went to minority "
+                        f"shareholders, associates and other items, leaving {money(L['PAT'])} for the company's owners.")
         # what drove profit growth?
         if not is_nan(rev_g) and not is_nan(pat_g):
             if pat_g > rev_g + 2:

@@ -114,7 +114,7 @@ def waterfall(items: list, T: dict, title=None, height=330) -> go.Figure:
         totals=dict(marker=dict(color=T["cat"][2])), text=texts, textposition="outside", textfont=dict(size=10, color=T["text2"]),
         hovertemplate="%{x}: %{text}<extra></extra>"))
     _base(fig, T, height=height, legend=False, title=title).update_layout(hovermode="closest")
-    fig.update_xaxes(tickangle=0, tickfont=dict(size=10))
+    fig.update_xaxes(tickangle=-35, tickfont=dict(size=10))
     return fig
 
 

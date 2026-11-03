@@ -1,7 +1,7 @@
 """Automatic 3-statement projection, scenarios and DCF built from a Metrics object."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, replace
 import re
 
 import numpy as np
@@ -33,6 +33,7 @@ class Assumptions:
     payout_pct: float = 20.0
     debt_change_pct: list = field(default_factory=list)  # % change in debt per year
     min_cash: float = 0.0
+    minority_pct: float = 0.0                            # % of profit after tax that goes to minorities / others
 
     def to_dict(self):
         return asdict(self)
@@ -74,7 +75,10 @@ def default_assumptions(m: Metrics, n_years: int = 5) -> Assumptions:
     capex_pct = _clip(capex.mean() if len(capex) else np.nan, 0.5, 25, 5.0)
     oi = _clip(L["Other Income"] / L["Revenue"] * 100 if L["Revenue"] else np.nan, 0, 10, 1.0)
     pay = df["Dividend Payout %"].dropna().tail(3)
+    mn = df["Minority share %"].dropna().tail(3) if "Minority share %" in df else []
+    minority = _clip(float(np.mean(mn)) if len(mn) else np.nan, 0, 50, 0.0)
     return Assumptions(
+        minority_pct=round(minority, 1),
         n_years=n_years, rev_growth=growth, ebitda_margin=margin, other_income_pct=round(oi, 1),
         dep_pct_opening_block=round(dep_pct, 1), interest_rate=round(rate, 1), tax_rate=round(tax, 1),
         capex_pct_sales=round(capex_pct, 1),
@@ -127,8 +131,9 @@ def project(m: Metrics, A: Assumptions, scenario: str = "Base") -> Projection:
         notes.append("Base-year balance sheet did not reconcile exactly; the difference was absorbed in 'Other assets'.")
     shares = val("Shares (Cr)", np.nan)
     res0 = res
+    ol_core, cum_min = ol, 0.0     # minority interest sits inside Other Liabilities; track the core part separately
 
-    rows = {k: [] for k in ["Revenue", "EBITDA", "Other Income", "Depreciation", "Interest", "PBT", "Tax", "PAT",
+    rows = {k: [] for k in ["Revenue", "EBITDA", "Other Income", "Depreciation", "Interest", "PBT", "Tax", "Minority & others", "PAT",
                             "Dividend", "EPS",
                             "Share Capital", "Reserves", "Debt", "Other Liabilities", "Total Liabilities",
                             "Net Block", "CWIP", "Investments", "Receivables", "Inventory", "Other Assets (misc.)",
@@ -145,17 +150,21 @@ def project(m: Metrics, A: Assumptions, scenario: str = "Base") -> Projection:
         intr = debt * A.interest_rate / 100
         pbt = ebitda + oi - dep - intr
         tax = max(pbt, 0) * A.tax_rate / 100
-        pat = pbt - tax
+        pat_total = pbt - tax
+        mino = max(pat_total, 0) * A.minority_pct / 100
+        pat = pat_total - mino                      # attributable to owners
         div = max(pat, 0) * A.payout_pct / 100
         capex = sales * A.capex_pct_sales / 100
         nb_new = max(nb + capex - dep, 0)
         recv_n = sales * A.recv_days / 365
         inv_n = sales * A.inv_days / 365
-        ol_n = sales * A.other_liab_pct_sales / 100
+        ol_core_n = sales * A.other_liab_pct_sales / 100
+        cum_min += mino
+        ol_n = ol_core_n + cum_min
         resid_n = sales * A.resid_assets_pct_sales / 100
-        d_wc = (recv_n + inv_n + resid_n) - (recv + inven + resid) - (ol_n - ol)
+        d_wc = (recv_n + inv_n + resid_n) - (recv + inven + resid) - (ol_core_n - ol_core)
         debt_plan = max(debt * (1 + dchg[t] / 100), 0)
-        cfo = pat + dep - d_wc
+        cfo = pat_total + dep - d_wc
         cfi = -capex
         cff = (debt_plan - debt) - div
         cash_new = cash + cfo + cfi + cff
@@ -169,7 +178,7 @@ def project(m: Metrics, A: Assumptions, scenario: str = "Base") -> Projection:
         res_new = res + pat - div
         tl_n = eq_cap + res_new + debt_new + ol_n
         ta_n = nb_new + cwip + inv_ + recv_n + inv_n + resid_n + cash_new
-        vals = dict(Revenue=sales, EBITDA=ebitda, **{"Other Income": oi}, Depreciation=dep, Interest=intr, PBT=pbt, Tax=tax,
+        vals = dict(Revenue=sales, EBITDA=ebitda, **{"Other Income": oi}, Depreciation=dep, Interest=intr, PBT=pbt, Tax=tax, **{"Minority & others": mino},
                     PAT=pat, Dividend=div, EPS=(pat / shares if shares and not pd.isna(shares) else np.nan),
                     **{"Share Capital": eq_cap}, Reserves=res_new, Debt=debt_new, **{"Other Liabilities": ol_n},
                     **{"Total Liabilities": tl_n}, **{"Net Block": nb_new}, CWIP=cwip, Investments=inv_,
@@ -179,11 +188,12 @@ def project(m: Metrics, A: Assumptions, scenario: str = "Base") -> Projection:
         for k, v in vals.items():
             rows[k].append(v)
         s_prev, nb, debt, ol, res, cash = sales, nb_new, debt_new, ol_n, res_new, cash_new
+        ol_core = ol_core_n
         recv, inven, resid = recv_n, inv_n, resid_n
 
     # base-year (actual) column for context
     base_vals = dict(Revenue=sales0, EBITDA=val("EBITDA"), **{"Other Income": val("Other Income")},
-                     Depreciation=val("Depreciation"), Interest=val("Interest"), PBT=val("PBT"), Tax=val("Tax"),
+                     Depreciation=val("Depreciation"), Interest=val("Interest"), PBT=val("PBT"), Tax=val("Tax"), **{"Minority & others": val("Minority & others")},
                      PAT=val("PAT"), Dividend=val("Dividend"), EPS=val("EPS", np.nan),
                      **{"Share Capital": eq_cap}, Reserves=res0, Debt=val("Debt"),
                      **{"Other Liabilities": val("Other Liabilities")}, **{"Total Liabilities": tl},
@@ -194,7 +204,7 @@ def project(m: Metrics, A: Assumptions, scenario: str = "Base") -> Projection:
                      **{"ΔNWC": np.nan}, **{"Revolver draw": 0.0})
     all_cols = [base + " (A)"] + labels
     full = pd.DataFrame({k: [base_vals[k]] + rows[k] for k in rows}, index=all_cols).T
-    pl = full.loc[["Revenue", "EBITDA", "Other Income", "Depreciation", "Interest", "PBT", "Tax", "PAT", "Dividend", "EPS"]]
+    pl = full.loc[["Revenue", "EBITDA", "Other Income", "Depreciation", "Interest", "PBT", "Tax", "Minority & others", "PAT", "Dividend", "EPS"]]
     bs = full.loc[["Share Capital", "Reserves", "Debt", "Other Liabilities", "Total Liabilities", "Net Block", "CWIP",
                    "Investments", "Receivables", "Inventory", "Other Assets (misc.)", "Cash", "Total Assets", "Check (L - A)"]]
     cf = full.loc[["CFO", "Capex", "CFI", "CFF", "Net Cash Flow", "FCF", "ΔNWC", "Revolver draw"]]
@@ -274,7 +284,10 @@ def run_dcf(m: Metrics, proj: Projection, inp: DCFInputs) -> dict:
     debt = 0.0 if pd.isna(L.get("Debt")) else float(L["Debt"])
     cash = 0.0 if pd.isna(L.get("Cash")) else float(L["Cash"])
     invs = 0.0 if (pd.isna(L.get("Investments")) or not inp.include_investments) else float(L["Investments"])
-    equity = ev - debt + cash + invs
+    equity_all = ev - debt + cash + invs
+    mpct = float(getattr(proj.assumptions, 'minority_pct', 0.0) or 0.0)
+    minority_val = max(equity_all, 0) * mpct / 100
+    equity = equity_all - minority_val
     shares = L.get("Shares (Cr)")
     if (shares is None or pd.isna(shares)) and inp.shares:
         shares = inp.shares
@@ -284,7 +297,7 @@ def run_dcf(m: Metrics, proj: Projection, inp: DCFInputs) -> dict:
     ebitda_n = proj.pl.loc["EBITDA", proj.labels[-1]]
     return {
         "fcff": t, "pv": pv, "tv": tv, "pv_tv": pv_tv, "ev": ev, "debt": debt, "cash": cash, "investments": invs,
-        "equity": equity, "per_share": ps, "price": price, "upside": upside, "tv_share": pv_tv / ev * 100 if ev else np.nan,
+        "equity": equity, "minority": minority_val, "per_share": ps, "price": price, "upside": upside, "tv_share": pv_tv / ev * 100 if ev else np.nan,
         "implied_exit_multiple": tv / ebitda_n if ebitda_n else np.nan, "labels": proj.labels,
         "wacc": inp.wacc, "g": inp.terminal_growth,
     }
@@ -296,7 +309,7 @@ def sensitivity(m: Metrics, proj: Projection, inp: DCFInputs, w_step=1.0, g_step
     grid = pd.DataFrame(index=[f"{w:.1f}%" for w in ws], columns=[f"{g:.1f}%" for g in gs], dtype=float)
     for w in ws:
         for g in gs:
-            r = run_dcf(m, proj, DCFInputs(w, g, inp.mid_year, inp.include_investments, inp.current_price))
+            r = run_dcf(m, proj, replace(inp, wacc=w, terminal_growth=g))
             grid.loc[f"{w:.1f}%", f"{g:.1f}%"] = r.get("per_share", np.nan) if "error" not in r else np.nan
     grid.index.name = "WACC ↓ / g →"
     return grid

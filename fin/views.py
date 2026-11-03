@@ -59,7 +59,7 @@ def overview(X):
     per = m.latest_period
     cols = st.columns(4, gap="medium")
     specs = [("Revenue", "Revenue", True, "Revenue Growth %"), ("EBITDA", "EBITDA", True, "EBITDA Growth %"),
-             ("Net profit", "PAT", True, "PAT Growth %"), ("Free cash flow", "FCF", True, None)]
+             ("Net profit (to owners)", "PAT", True, "PAT Growth %"), ("Free cash flow", "FCF", True, None)]
     for c, (lab, col, up, gcol) in zip(cols, specs):
         with c:
             with card("kpi"):
@@ -179,7 +179,11 @@ def performance(X):
                 if not is_nan(L.get("EBITDA")):
                     items = [("Revenue", L["Revenue"], "absolute"), ("Op. costs", -L["Operating Expenses"], "relative"), ("EBITDA", 0, "total"),
                              ("Other inc.", L["Other Income"], "relative"), ("Deprn.", -L["Depreciation"], "relative"), ("Interest", -L["Interest"], "relative"),
-                             ("Tax", -(L["Tax"] if not is_nan(L["Tax"]) else 0), "relative"), ("PAT", 0, "total")]
+                             ("Tax", -(L["Tax"] if not is_nan(L["Tax"]) else 0), "relative")]
+                    mo = L.get("Minority & others")
+                    if not is_nan(mo) and abs(mo) > 0.005 * abs(L["Revenue"]):
+                        items += [("Minority", -mo, "relative")]
+                    items += [("PAT", 0, "total")]
                     plot(C.waterfall(items, T, title=f"{m.latest_period}: from revenue to profit", height=380))
         c = st.columns(2, gap="medium")
         with c[0]:
@@ -195,7 +199,17 @@ def performance(X):
                     plot(C.stacked(tmp, exp_cols, T, title="Expenses as % of sales", percent=False))
         with card("p5"):
             card_title("Income statement", f"{CURRENCY['symbol']} {CURRENCY['unit']}")
-            st.markdown(html_table(co.pl.iloc[:, -n:]), unsafe_allow_html=True)
+            pl_t = co.pl.iloc[:, -n:].copy()
+            rec = m.df.reindex(pl_t.columns)
+            if "PAT (total)" in rec and rec["Minority & others"].abs().max() > 0.005 * max(abs(rec["PAT (total)"]).max(), 1) and "Net profit" in pl_t.index:
+                at = pl_t.index.get_loc("Net profit")
+                extra = pd.DataFrame({"Profit after tax (PBT - Tax)": rec["PAT (total)"],
+                                      "Less: minority, associates & others (derived)": -rec["Minority & others"]}).T
+                pl_t = pd.concat([pl_t.iloc[:at], extra, pl_t.iloc[at:]])
+                pl_t = pl_t.rename(index={"Net profit": "Net profit (attributable to owners)"})
+            st.markdown(html_table(pl_t), unsafe_allow_html=True)
+            st.caption("Net profit is the Screener Data Sheet figure after minority interest, so it matches EPS. "
+                       "Screener's web page shows profit before minority (PBT - Tax); the reconciliation rows bridge the two.")
     with t2:
         c = st.columns(2, gap="medium")
         with c[0]:
@@ -491,6 +505,7 @@ def model_page(X):
         A.resid_assets_pct_sales = c[0].number_input("Misc. assets % sales", value=float(A.resid_assets_pct_sales), step=0.5, key=f"as_ms_{name}")
         A.payout_pct = c[1].number_input("Dividend payout %", value=float(A.payout_pct), step=1.0, key=f"as_py_{name}")
         A.min_cash = c[2].number_input("Minimum cash", value=float(A.min_cash), step=50.0, key=f"as_mc_{name}")
+        A.minority_pct = c[3].number_input("Minority & others % of PAT", value=float(A.minority_pct), min_value=0.0, max_value=90.0, step=0.5, key=f"as_mn_{name}")
     st.session_state[key] = A
 
     proj = MD.project(m, A, scenario)

@@ -144,19 +144,19 @@ def _live_model(wb, m: Metrics, A: Assumptions, scenario: str, wacc: float, g: f
     for t, lab in enumerate(base.labels):
         ws.write(3, 2 + t, lab, F["hdr"])
 
-    names = ["g", "mg", "dchg", "oi", "dep", "ir", "tx", "cx", "rd", "idays", "olp", "misc", "pay", "mincash", "gd", "md", "shares",
-             "rev", "ebitda", "oinc", "depn", "intr", "pbt", "tax", "pat", "div", "eps",
-             "sc", "res", "debt", "ol", "tl", "nb", "cwip", "invs", "recv", "inv", "misca", "cash", "ta", "chk",
+    names = ["g", "mg", "dchg", "oi", "dep", "ir", "tx", "cx", "rd", "idays", "olp", "misc", "pay", "mn", "mincash", "gd", "md", "shares",
+             "rev", "ebitda", "oinc", "depn", "intr", "pbt", "tax", "mino", "pat", "div", "eps",
+             "sc", "res", "debt", "olc", "ol", "tl", "nb", "cwip", "invs", "recv", "inv", "misca", "cash", "ta", "chk",
              "cfo", "capex", "cfi", "cff", "ncf", "fcf", "dnwc", "draw"]
     labels = {
         "g": "Revenue growth % (per year)", "mg": "EBITDA margin % (per year)", "dchg": "Change in debt % (per year)",
         "oi": "Other income % of sales", "dep": "Depreciation % of opening net block", "ir": "Interest rate % on opening debt",
         "tx": "Tax rate %", "cx": "Capex % of sales", "rd": "Receivable days", "idays": "Inventory days",
-        "olp": "Other liabilities % of sales", "misc": "Misc. assets % of sales", "pay": "Dividend payout %",
+        "olp": "Other liabilities % of sales", "misc": "Misc. assets % of sales", "pay": "Dividend payout %", "mn": "Minority & others % of PAT",
         "mincash": "Minimum cash balance", "gd": "Scenario: growth Δ (pp)", "md": "Scenario: margin Δ (pp)", "shares": "Shares (Cr)",
         "rev": "Revenue", "ebitda": "EBITDA", "oinc": "Other income", "depn": "Depreciation", "intr": "Interest", "pbt": "Profit before tax",
-        "tax": "Tax", "pat": "Net profit (PAT)", "div": "Dividend", "eps": "EPS (₹)",
-        "sc": "Share capital", "res": "Reserves", "debt": "Borrowings", "ol": "Other liabilities", "tl": "Total liabilities",
+        "tax": "Tax", "mino": "Less: minority, associates & others", "pat": "Net profit (to owners)", "div": "Dividend", "eps": "EPS (₹)",
+        "sc": "Share capital", "res": "Reserves", "debt": "Borrowings", "olc": "Other liabilities, excl. accumulated minority", "ol": "Other liabilities (incl. minority)", "tl": "Total liabilities",
         "nb": "Net block", "cwip": "CWIP", "invs": "Investments", "recv": "Receivables", "inv": "Inventory",
         "misca": "Other assets (misc.)", "cash": "Cash & bank", "ta": "Total assets", "chk": "Balance check (should be 0)",
         "cfo": "Cash from operations", "capex": "Capex", "cfi": "Cash from investing", "cff": "Cash from financing",
@@ -175,7 +175,7 @@ def _live_model(wb, m: Metrics, A: Assumptions, scenario: str, wacc: float, g: f
     R = lambda k: row[k]  # noqa: E731
 
     sc_vals = dict(oi=A.other_income_pct, dep=A.dep_pct_opening_block, ir=A.interest_rate, tx=A.tax_rate, cx=A.capex_pct_sales,
-                   rd=A.recv_days, idays=A.inv_days, olp=A.other_liab_pct_sales, misc=A.resid_assets_pct_sales, pay=A.payout_pct,
+                   rd=A.recv_days, idays=A.inv_days, olp=A.other_liab_pct_sales, misc=A.resid_assets_pct_sales, pay=A.payout_pct, mn=A.minority_pct,
                    mincash=A.min_cash, gd=gd, md=md, shares=float(L.get("Shares (Cr)", np.nan)) if pd.notna(L.get("Shares (Cr)", np.nan)) else 1.0)
     for k, v in sc_vals.items():
         ws.write(R(k) - 1, 1, _clean(v), F["inp"])
@@ -188,8 +188,8 @@ def _live_model(wb, m: Metrics, A: Assumptions, scenario: str, wacc: float, g: f
     # base-year actuals
     b = base.pl[base.base_label], base.bs[base.base_label], base.cf[base.base_label]
     basev = {"rev": b[0]["Revenue"], "ebitda": b[0]["EBITDA"], "oinc": b[0]["Other Income"], "depn": b[0]["Depreciation"],
-             "intr": b[0]["Interest"], "pbt": b[0]["PBT"], "tax": b[0]["Tax"], "pat": b[0]["PAT"], "div": b[0]["Dividend"],
-             "sc": b[1]["Share Capital"], "res": b[1]["Reserves"], "debt": b[1]["Debt"], "ol": b[1]["Other Liabilities"],
+             "intr": b[0]["Interest"], "pbt": b[0]["PBT"], "tax": b[0]["Tax"], "mino": b[0]["Minority & others"], "pat": b[0]["PAT"], "div": b[0]["Dividend"],
+             "sc": b[1]["Share Capital"], "res": b[1]["Reserves"], "debt": b[1]["Debt"], "ol": b[1]["Other Liabilities"], "olc": b[1]["Other Liabilities"],
              "nb": b[1]["Net Block"], "cwip": b[1]["CWIP"], "invs": b[1]["Investments"], "recv": b[1]["Receivables"],
              "inv": b[1]["Inventory"], "misca": b[1]["Other Assets (misc.)"], "cash": b[1]["Cash"],
              "cfo": b[2]["CFO"], "capex": b[2]["Capex"], "cfi": b[2]["CFI"], "cff": b[2]["CFF"], "ncf": b[2]["Net Cash Flow"],
@@ -214,13 +214,15 @@ def _live_model(wb, m: Metrics, A: Assumptions, scenario: str, wacc: float, g: f
             "intr": f"={p}{k('debt')}*$B${k('ir')}/100",
             "pbt": f"={c}{k('ebitda')}+{c}{k('oinc')}-{c}{k('depn')}-{c}{k('intr')}",
             "tax": f"=MAX({c}{k('pbt')},0)*$B${k('tx')}/100",
-            "pat": f"={c}{k('pbt')}-{c}{k('tax')}",
+            "mino": f"=MAX({c}{k('pbt')}-{c}{k('tax')},0)*$B${k('mn')}/100",
+            "pat": f"={c}{k('pbt')}-{c}{k('tax')}-{c}{k('mino')}",
             "div": f"=MAX({c}{k('pat')},0)*$B${k('pay')}/100",
             "eps": f"={c}{k('pat')}/$B${k('shares')}",
             "sc": f"={p}{k('sc')}",
             "res": f"={p}{k('res')}+{c}{k('pat')}-{c}{k('div')}",
             "debt": f"={debt_plan}+{c}{k('draw')}",
-            "ol": f"={c}{k('rev')}*$B${k('olp')}/100",
+            "olc": f"={c}{k('rev')}*$B${k('olp')}/100",
+            "ol": f"={c}{k('olc')}+({p}{k('ol')}-{p}{k('olc')})+{c}{k('mino')}",
             "nb": f"=MAX({p}{k('nb')}+{c}{k('capex')}-{c}{k('depn')},0)",
             "cwip": f"={p}{k('cwip')}", "invs": f"={p}{k('invs')}",
             "recv": f"={c}{k('rev')}*$B${k('rd')}/365", "inv": f"={c}{k('rev')}*$B${k('idays')}/365",
@@ -229,14 +231,14 @@ def _live_model(wb, m: Metrics, A: Assumptions, scenario: str, wacc: float, g: f
             "tl": f"={c}{k('sc')}+{c}{k('res')}+{c}{k('debt')}+{c}{k('ol')}",
             "ta": f"={c}{k('nb')}+{c}{k('cwip')}+{c}{k('invs')}+{c}{k('recv')}+{c}{k('inv')}+{c}{k('misca')}+{c}{k('cash')}",
             "chk": f"={c}{k('tl')}-{c}{k('ta')}",
-            "cfo": f"={c}{k('pat')}+{c}{k('depn')}-{c}{k('dnwc')}",
+            "cfo": f"={c}{k('pat')}+{c}{k('mino')}+{c}{k('depn')}-{c}{k('dnwc')}",
             "capex": f"={c}{k('rev')}*$B${k('cx')}/100",
             "cfi": f"=-{c}{k('capex')}",
             "draw": f"=MAX(0,$B${k('mincash')}-({p}{k('cash')}+{c}{k('cfo')}+{c}{k('cfi')}+({debt_plan}-{p}{k('debt')})-{c}{k('div')}))",
             "cff": f"=({debt_plan}-{p}{k('debt')})-{c}{k('div')}+{c}{k('draw')}",
             "ncf": f"={c}{k('cfo')}+{c}{k('cfi')}+{c}{k('cff')}",
             "fcf": f"={c}{k('cfo')}-{c}{k('capex')}",
-            "dnwc": f"=({c}{k('recv')}+{c}{k('inv')}+{c}{k('misca')})-({p}{k('recv')}+{p}{k('inv')}+{p}{k('misca')})-({c}{k('ol')}-{p}{k('ol')})",
+            "dnwc": f"=({c}{k('recv')}+{c}{k('inv')}+{c}{k('misca')})-({p}{k('recv')}+{p}{k('inv')}+{p}{k('misca')})-({c}{k('olc')}-{p}{k('olc')})",
         }
         for key, formula in fm.items():
             fmt = F["chk"] if key == "chk" else F["numb"] if key in ("rev", "pat", "tl", "ta", "fcf") else F["num"]
@@ -264,8 +266,8 @@ def _live_model(wb, m: Metrics, A: Assumptions, scenario: str, wacc: float, g: f
     ws.write_formula(d0 + 8, 1, f"=SUM(C{d0 + 6}:{last}{d0 + 6})+B{d0 + 8}", F["numb"])
     ws.write(d0 + 9, 0, "Less: debt / Add: cash + investments (latest actual)", F["lbl"])
     ws.write_formula(d0 + 9, 1, f"=-B{R('debt')}+B{R('cash')}+B{R('invs')}", F["num"])
-    ws.write(d0 + 10, 0, "Equity value", F["lblb"])
-    ws.write_formula(d0 + 10, 1, f"=B{d0 + 9}+B{d0 + 10}", F["numb"])
+    ws.write(d0 + 10, 0, "Equity value (after minority share)", F["lblb"])
+    ws.write_formula(d0 + 10, 1, f"=(B{d0 + 9}+B{d0 + 10})*(1-$B${R('mn')}/100)", F["numb"])
     ws.write(d0 + 11, 0, "Value per share (₹)", F["lblb"])
     ws.write_formula(d0 + 11, 1, f"=B{d0 + 11}/$B${R('shares')}", F["numb"])
     ws.freeze_panes(4, 1)

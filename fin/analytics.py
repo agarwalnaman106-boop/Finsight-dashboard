@@ -79,7 +79,12 @@ class Metrics:
         m["Interest"] = intr
         m["PBT"] = pbt
         m["Tax"] = tax
-        m["PAT"] = pat
+        m["PAT"] = pat            # profit attributable to owners (Screener "Net profit"; matches EPS)
+        # profit before minority interest = PBT - Tax; the gap is minority share / associates / exceptional items
+        pat_total = (pbt - tax) if (pbt.notna().any() and tax.notna().any()) else pat
+        m["PAT (total)"] = pat_total
+        m["Minority & others"] = pat_total - pat
+        m["Minority share %"] = (_div(pat_total - pat, pat_total) * 100).where(pat_total > 0)
         m["Dividend"] = div
         for k in exp_items:
             m[k] = exp_frame[k]
