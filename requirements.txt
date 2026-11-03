@@ -1,0 +1,13 @@
+# Tested with these versions on Python 3.13; every package below publishes Python 3.14 (Windows) wheels.
+streamlit>=1.66
+plotly>=7.0
+pandas>=3.0
+numpy>=2.3
+openpyxl>=3.1
+xlsxwriter>=3.2
+pypdfium2>=5.0
+pdfplumber>=0.11
+pytesseract>=0.3.13
+pillow>=12.0
+reportlab>=5.0
+matplotlib>=3.10
